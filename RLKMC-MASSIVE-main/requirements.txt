@@ -1,0 +1,6 @@
+torch
+numpy
+matplotlib
+pytest
+mpi4py
+pydantic

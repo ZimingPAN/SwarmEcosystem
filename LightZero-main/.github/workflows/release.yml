@@ -1,0 +1,232 @@
+name: Package Release
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  source_build:
+    name: Build and publish the source package
+    runs-on: ${{ matrix.os }}
+    if: ${{ github.repository == 'opendilab/LightZero' }}
+    strategy:
+      matrix:
+        os:
+          - 'ubuntu-20.04'
+        python-version:
+          - '3.8.17'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 20
+      - name: Set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade flake8 setuptools wheel twine
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-build.txt ]; then pip install -r requirements-build.txt; fi
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+          pip install --upgrade build
+      - name: Build packages
+        run: |
+          make zip
+          ls -al dist
+      - name: Upload packed files to artifacts (source)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-source
+          path: ./dist/*
+
+  wheel_build:
+    name: Build the wheels
+    runs-on: ${{ matrix.os }}
+    if: ${{ github.repository == 'opendilab/LightZero' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - 'ubuntu-20.04'
+          - 'macos-15'
+        python:
+          - '3.7'
+          - '3.8'
+          - '3.9'
+          - '3.10'
+          - '3.11'
+        architecture:
+          - x86_64
+          - arm64
+          - aarch64
+          - x86
+          - AMD64
+        exclude:
+          - os: ubuntu-20.04
+            architecture: arm64
+          - os: ubuntu-20.04
+            architecture: x86
+          - os: ubuntu-20.04
+            architecture: AMD64
+          - os: macos-15
+            architecture: aarch64
+          - os: macos-15
+            architecture: x86
+          - os: macos-15
+            architecture: AMD64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 20
+
+      - name: Set up QEMU
+        if: ${{ runner.os == 'Linux' }}
+        uses: docker/setup-qemu-action@v1
+        with:
+          platforms: all
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.11.4
+        env:
+          CIBW_SKIP: "pp* *musllinux*"
+          CIBW_ARCHS: ${{ matrix.architecture }}
+          CIBW_PROJECT_REQUIRES_PYTHON: ">=${{ matrix.python }}"
+      - name: Show the buildings
+        shell: bash
+        run: |
+          ls -al ./wheelhouse
+          mv wheelhouse dist
+      - name: Upload packed files to artifacts (wheels)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-wheels-${{ matrix.os }}-${{ matrix.python }}-${{ matrix.architecture }}
+          path: ./dist/*
+
+  wheel_aggregate:
+    name: Aggregate all wheels
+    runs-on: ubuntu-20.04
+    needs: wheel_build
+    steps:
+      - name: Create aggregation directory
+        run: mkdir -p aggregated_wheels_all
+
+      - name: Download wheel ubuntu-20.04, 3.7, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.7-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.8, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.8-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.9, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.9-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.10, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.10-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.11, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.11-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.7, aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.7-aarch64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.8, aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.8-aarch64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.9, aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.9-aarch64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.10, aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.10-aarch64
+          path: aggregated_wheels_all
+      - name: Download wheel ubuntu-20.04, 3.11, aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-ubuntu-20.04-3.11-aarch64
+          path: aggregated_wheels_all
+
+      - name: Download wheel macos-15, 3.7, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-macos-15-3.7-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel macos-15, 3.8, x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-macos-15-3.8-x86_64
+          path: aggregated_wheels_all
+      - name: Download wheel macos-15, 3.7, arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-macos-15-3.7-arm64
+          path: aggregated_wheels_all
+      - name: Download wheel macos-15, 3.8, arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels-macos-15-3.8-arm64
+          path: aggregated_wheels_all
+
+      - name: Upload unified wheels artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-wheels
+          path: aggregated_wheels_all
+
+  # the publishing can only be processed on linux system
+  wheel_publish:
+    name: Publish the wheels to pypi
+    runs-on: ubuntu-20.04
+    needs:
+      - source_build
+      - wheel_aggregate
+    strategy:
+      fail-fast: false
+      matrix:
+        python:
+          - '3.8.7'
+
+    steps:
+      - name: Download unified wheels artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-wheels
+          path: ./dist
+      - name: Show the aggregated wheels
+        run: ls -al ./dist
+      - name: Upload distribution 📦 to github release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/*
+          tag: ${{ github.ref }}
+          overwrite: false
+          file_glob: true
+      - name: Publish distribution 📦 to real PyPI
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true
+          skip_existing: true
+          packages_dir: dist/

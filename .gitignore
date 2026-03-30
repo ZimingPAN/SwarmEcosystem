@@ -1,0 +1,12 @@
+# 忽略 PyCharm 的配置文件
+.idea/
+
+# 忽略本地 Python 环境 (针对你的项目)
+conda/
+
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+
+# 忽略 Mac 系统产生的隐藏文件
+.DS_Store
