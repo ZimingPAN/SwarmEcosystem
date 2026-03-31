@@ -223,10 +223,11 @@ class DreamerKMCAgent(nn.Module):
             nn.Linear(128, 1),
         )
 
-        # Physics time head — conditioned on action, outputs log(Δt)
+        # Physics time head — state-only (Δt depends on Γ_tot of current config,
+        # NOT on which action is taken — this is a KMC Poisson process property)
         self.time_head = nn.Sequential(
-            nn.LayerNorm(latent_flat + action_space_size),
-            nn.Linear(latent_flat + action_space_size, 64),
+            nn.LayerNorm(latent_flat),
+            nn.Linear(latent_flat, 64),
             nn.SiLU(),
             nn.Linear(64, 1),
         )
@@ -292,22 +293,14 @@ class DreamerKMCAgent(nn.Module):
         return self.reward_head(inp).squeeze(-1)
 
     def forward_time(self, latent_flat: torch.Tensor, action: torch.Tensor = None) -> torch.Tensor:
-        """Return predicted Δt (exponentiated from log-space)."""
-        if action is not None:
-            action_onehot = F.one_hot(action.long(), self.action_space_size).float()
-            inp = torch.cat([latent_flat, action_onehot], dim=-1)
-        else:
-            inp = torch.cat([latent_flat, torch.zeros(latent_flat.shape[0], self.action_space_size, device=latent_flat.device)], dim=-1)
-        return torch.exp(self.time_head(inp).squeeze(-1))
+        """Return predicted Δt (exponentiated from log-space).
+        Δt is a state property (Poisson process), action arg is ignored for compatibility."""
+        return torch.exp(self.time_head(latent_flat).squeeze(-1))
 
     def forward_log_time(self, latent_flat: torch.Tensor, action: torch.Tensor = None) -> torch.Tensor:
-        """Return raw log-space prediction for training loss."""
-        if action is not None:
-            action_onehot = F.one_hot(action.long(), self.action_space_size).float()
-            inp = torch.cat([latent_flat, action_onehot], dim=-1)
-        else:
-            inp = torch.cat([latent_flat, torch.zeros(latent_flat.shape[0], self.action_space_size, device=latent_flat.device)], dim=-1)
-        return self.time_head(inp).squeeze(-1)
+        """Return raw log-space prediction for training loss.
+        Δt is a state property (Poisson process), action arg is ignored for compatibility."""
+        return self.time_head(latent_flat).squeeze(-1)
 
     def reconstruct_topology(self, latent_flat: torch.Tensor):
         """Feature 4: Reconstruct node attributes and mask for self-supervised learning."""
@@ -413,7 +406,7 @@ def train_step(agent: DreamerKMCAgent, optimizer: torch.optim.Optimizer,
 
     # Time prediction loss — train in log-space, detach latent so time head
     # gets strong gradients without interfering with policy/reward backbone
-    log_time_pred = agent.forward_log_time(latent.detach(), actions)
+    log_time_pred = agent.forward_log_time(latent.detach())
     log_time_target = torch.log(delta_ts.clamp(min=1e-10))
     time_loss = F.mse_loss(log_time_pred, log_time_target)
 
@@ -466,8 +459,16 @@ def train_step(agent: DreamerKMCAgent, optimizer: torch.optim.Optimizer,
     result["shortcut_loss"] = shortcut_loss_val
 
     optimizer.zero_grad()
-    loss.backward()
+    # Two-pass backward: backbone and time_head are decoupled (latent.detach())
+    # Compute backbone_loss explicitly to avoid shared computation graph issues
+    backbone_loss = 0.1 * policy_loss + 0.5 * value_loss + 1.0 * reward_loss + 0.2 * energy_loss
+    if agent.use_topology_head and topology_loss_val > 0:
+        backbone_loss = backbone_loss + 0.1 * topology_loss
+    if agent.use_shortcut_forcing and shortcut_loss_val > 0:
+        backbone_loss = backbone_loss + 0.05 * shortcut_loss
+    backbone_loss.backward()
     torch.nn.utils.clip_grad_norm_(agent.parameters(), 5.0)
+    time_loss.backward()
     optimizer.step()
 
     result["loss"] = loss.item()

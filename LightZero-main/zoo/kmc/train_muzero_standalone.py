@@ -209,6 +209,14 @@ class SimpleMCTS:
         if len(valid_actions) == 0:
             return np.ones(n_actions) / n_actions
 
+        # Physics-time discount: compute γ from ROOT state ONCE (Δt is a state
+        # property — same for all actions, determined by Γ_tot of current config)
+        if self.use_physics_discount and hasattr(self.model, 'latest_time_delta'):
+            root_dt = max(self.model.latest_time_delta[0].item(), 1e-8)
+            root_gamma = math.exp(-root_dt / self.time_scale_tau)
+        else:
+            root_gamma = self.discount
+
         for _ in range(self.num_simulations):
             # UCB selection
             total_visits = visit_count.sum() + 1
@@ -241,14 +249,8 @@ class SimpleMCTS:
             else:
                 v = dyn_out.value[0].item()
 
-            # Feature 1: Physics-time discount γ = exp(-Δt/τ)
-            # Δt is a state property (not action-dependent), used for time-aware discounting
-            if self.use_physics_discount and hasattr(self.model, 'latest_time_delta'):
-                time_delta = max(self.model.latest_time_delta[0].item(), 1e-8)
-                physics_gamma = math.exp(-time_delta / self.time_scale_tau)
-                q = r + physics_gamma * v
-            else:
-                q = r + self.discount * v
+            # Use root_gamma (action-independent) for backup
+            q = r + root_gamma * v
             visit_count[action] += 1
             total_value[action] += q
             mean_value[action] = total_value[action] / visit_count[action]
@@ -416,8 +418,14 @@ def train_step(model: KMCGraphMuZeroModel, optimizer: torch.optim.Optimizer,
     loss = policy_loss + reward_loss + 0.25 * value_loss + 1.0 * time_loss - entropy_coeff * entropy
 
     optimizer.zero_grad()
-    loss.backward()
+    # Two-pass backward: backbone and time_head are decoupled (latent.detach())
+    # so we backward them separately to avoid time_head's large gradients
+    # inflating the total norm and starving backbone gradients during clipping.
+    backbone_loss = policy_loss + reward_loss + 0.25 * value_loss - entropy_coeff * entropy
+    backbone_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    # time_loss only touches time_head (latent detached), separate graph
+    time_loss.backward()
     optimizer.step()
 
     return {

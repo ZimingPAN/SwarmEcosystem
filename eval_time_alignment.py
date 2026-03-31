@@ -185,7 +185,7 @@ def run_dreamer_with_time(env_cfg, model_path, device, n_episodes, max_steps):
                 logits = agent.forward_policy(latent, mask_t)
                 action = int(logits[0].argmax().item())
                 action_t = torch.tensor([action], device=device)
-                pred_dt = agent.forward_time(latent.view(1, -1), action_t).item()
+                pred_dt = agent.forward_time(latent.view(1, -1)).item()
 
             obs, mask, reward, done, info = env.step(action)
             real_dt = info["delta_t"]
