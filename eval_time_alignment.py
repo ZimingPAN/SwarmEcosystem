@@ -186,7 +186,9 @@ def run_muzero_with_time(env_cfg, model_path, device, n_episodes, max_steps, mct
         per_vacancy_latent_dim=8, lattice_size=env_cfg["lattice_size"],
         neighbor_order=env_cfg["neighbor_order"], categorical_distribution=False,
     ).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
+    ckpt = torch.load(model_path, map_location=device, weights_only=False)
+    state_dict = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+    model.load_state_dict(state_dict)
     model.eval()
 
     mcts = SimpleMCTS(model, num_simulations=mcts_sims, discount=0.997,
@@ -215,9 +217,7 @@ def run_muzero_with_time(env_cfg, model_path, device, n_episodes, max_steps, mct
                 obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
                 init_out = model.initial_inference(obs_t)
                 latent = init_out.latent_state
-                log_rate = torch.tensor([np.log(max(true_total_rate, 1e-20))],
-                                        dtype=torch.float32, device=device)
-                pred_dt = max(model.predict_time_delta(latent, log_total_rate=log_rate).item(), 0.0)
+                pred_dt = max(model.predict_time_delta(latent).item(), 0.0)
 
             obs, mask, reward, done, info = env.step(action)
             real_dt = info["delta_t"]
@@ -383,8 +383,12 @@ def main():
         env_cfg, args.muzero_ckpt, args.device, args.n_episodes, args.max_steps, args.mcts_sims
     )
 
-    print("\n[3/4] Running Dreamer...", flush=True)
-    dreamer_trajs = run_dreamer_with_time(env_cfg, args.dreamer_ckpt, args.device, args.n_episodes, args.max_steps)
+    dreamer_trajs = None
+    if os.path.exists(args.dreamer_ckpt):
+        print("\n[3/4] Running Dreamer...", flush=True)
+        dreamer_trajs = run_dreamer_with_time(env_cfg, args.dreamer_ckpt, args.device, args.n_episodes, args.max_steps)
+    else:
+        print(f"\n[3/4] Skipping Dreamer (checkpoint not found: {args.dreamer_ckpt})", flush=True)
 
     # ===== Save raw data =====
     def convert(obj):
@@ -397,18 +401,19 @@ def main():
         return obj
 
     muzero_summary = compute_alignment_summary(muzero_trajs)
-    dreamer_summary = compute_alignment_summary(dreamer_trajs)
+    dreamer_summary = compute_alignment_summary(dreamer_trajs) if dreamer_trajs else {}
+
+    save_data = {
+        "traditional": [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in trad_trajs],
+        "muzero": [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in muzero_trajs],
+        "summary": {"muzero": muzero_summary},
+    }
+    if dreamer_trajs:
+        save_data["dreamer"] = [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in dreamer_trajs]
+        save_data["summary"]["dreamer"] = dreamer_summary
 
     with open(os.path.join(args.output_dir, "time_eval_data.json"), "w") as f:
-        json.dump({
-            "traditional": [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in trad_trajs],
-            "muzero": [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in muzero_trajs],
-            "dreamer": [{k: convert(v) if not isinstance(v, list) else [convert(x) for x in v] for k, v in t.items()} for t in dreamer_trajs],
-            "summary": {
-                "muzero": muzero_summary,
-                "dreamer": dreamer_summary,
-            },
-        }, f)
+        json.dump(save_data, f)
 
     print("\n[4/4] Generating analysis plots...", flush=True)
 
@@ -420,13 +425,14 @@ def main():
 
     colors = {'Traditional KMC': '#9E9E9E', 'MuZero': '#FF5722', 'Dreamer': '#4CAF50'}
 
+    model_list = [('MuZero', muzero_trajs, colors['MuZero'], muzero_summary)]
+    if dreamer_trajs:
+        model_list.append(('Dreamer', dreamer_trajs, colors['Dreamer'], dreamer_summary))
+
     fig = plt.figure(figsize=(18, 20))
     gs = GridSpec(4, 2, figure=fig, hspace=0.4, wspace=0.3)
 
-    for idx, (name, trajs, color, summary) in enumerate([
-        ('MuZero', muzero_trajs, colors['MuZero'], muzero_summary),
-        ('Dreamer', dreamer_trajs, colors['Dreamer'], dreamer_summary),
-    ]):
+    for idx, (name, trajs, color, summary) in enumerate(model_list):
         ax = fig.add_subplot(gs[0, idx])
         true_expected = np.concatenate([t['true_expected_dts'] for t in trajs])
         pred_expected = np.concatenate([t['pred_expected_dts'] for t in trajs])
@@ -451,7 +457,10 @@ def main():
         ax.grid(True, alpha=0.3)
 
     ax = fig.add_subplot(gs[1, :])
-    for name, trajs, color in [('MuZero', muzero_trajs, colors['MuZero']), ('Dreamer', dreamer_trajs, colors['Dreamer'])]:
+    plot_models = [('MuZero', muzero_trajs, colors['MuZero'])]
+    if dreamer_trajs:
+        plot_models.append(('Dreamer', dreamer_trajs, colors['Dreamer']))
+    for name, trajs, color in plot_models:
         true_times = [t['cum_true_expected_time'] for t in trajs]
         pred_times = [t['cum_pred_expected_time'] for t in trajs]
         real_times = [t['cum_real_time'] for t in trajs]
@@ -469,10 +478,10 @@ def main():
     ax.legend(fontsize=9, ncol=3)
     ax.grid(True, alpha=0.3)
 
-    for idx, (name, trajs, color) in enumerate([
-        ('MuZero', muzero_trajs, colors['MuZero']),
-        ('Dreamer', dreamer_trajs, colors['Dreamer']),
-    ]):
+    dist_models = [('MuZero', muzero_trajs, colors['MuZero'])]
+    if dreamer_trajs:
+        dist_models.append(('Dreamer', dreamer_trajs, colors['Dreamer']))
+    for idx, (name, trajs, color) in enumerate(dist_models):
         ax = fig.add_subplot(gs[2, idx])
         true_expected = np.concatenate([t['true_expected_dts'] for t in trajs])
         pred_expected = np.concatenate([t['pred_expected_dts'] for t in trajs])
@@ -495,7 +504,10 @@ def main():
     avg_trad_energies = np.mean([t['energies'][:max_steps_trad] for t in trad_trajs], axis=0)
     ax.plot(avg_trad_times, avg_trad_energies, color=colors['Traditional KMC'], linewidth=3, label='Traditional KMC (mean expected time)')
 
-    for name, trajs, color in [('MuZero', muzero_trajs, colors['MuZero']), ('Dreamer', dreamer_trajs, colors['Dreamer'])]:
+    energy_models = [('MuZero', muzero_trajs, colors['MuZero'])]
+    if dreamer_trajs:
+        energy_models.append(('Dreamer', dreamer_trajs, colors['Dreamer']))
+    for name, trajs, color in energy_models:
         n_steps = min(len(t['true_expected_dts']) for t in trajs)
         avg_true_times = np.mean([[0.0] + list(np.cumsum(t['true_expected_dts'][:n_steps])) for t in trajs], axis=0)
         avg_pred_times = np.mean([[0.0] + list(np.cumsum(t['pred_expected_dts'][:n_steps])) for t in trajs], axis=0)
@@ -516,7 +528,10 @@ def main():
     print(f"\n{'='*60}")
     print("TIME ALIGNMENT SUMMARY")
     print(f"{'='*60}")
-    for name, summary in [('MuZero', muzero_summary), ('Dreamer', dreamer_summary)]:
+    summary_list = [('MuZero', muzero_summary)]
+    if dreamer_trajs:
+        summary_list.append(('Dreamer', dreamer_summary))
+    for name, summary in summary_list:
         print(f"\n  {name}:")
         print(f"    Per-step R²:    {summary['per_step_r2']:.4f}")
         print(f"    Per-step MAE:   {summary['per_step_mae']:.2e}")

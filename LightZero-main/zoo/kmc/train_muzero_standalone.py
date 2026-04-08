@@ -330,7 +330,8 @@ def collect_episode(env: KMCEnvWrapper, model: KMCGraphMuZeroModel,
 def train_step(model: KMCGraphMuZeroModel, optimizer: torch.optim.Optimizer,
                batch: List[Transition], device: str, discount: float,
                temperature: float = 300.0, use_entropy_reg: bool = False,
-               use_physics_discount: bool = False, time_scale_tau: float = 1.0) -> dict:
+               use_physics_discount: bool = False, time_scale_tau: float = 1.0,
+               time_loss_weight: float = 0.1) -> dict:
     """One training step on a batch of transitions."""
     obs = torch.tensor(np.stack([t.obs for t in batch]), dtype=torch.float32, device=device)
     actions = torch.tensor([t.action for t in batch], dtype=torch.long, device=device)
@@ -435,10 +436,13 @@ def train_step(model: KMCGraphMuZeroModel, optimizer: torch.optim.Optimizer,
     else:
         entropy_coeff = 0.0
 
-    # Total loss
-    # Time supervision learns the state-identifiable time scale E[Δt | s] = 1 / Γ_tot.
-    # Residual time head: log(E[Δt|s]) = -log(Γ_tot) + residual
-    # log_total_rate was extracted during initial_inference and stored in model
+    # Total loss (main: policy + reward + value)
+    main_loss = policy_loss + reward_loss + 0.25 * value_loss - entropy_coeff * entropy
+
+    # Time supervision with gradient isolation (AGENTS.md §6 rule 5):
+    # Residual mode: log(E[Δt|s]) = -log(Γ_tot) + residual(latent.detach())
+    # Use latent.detach() to prevent time_head gradients from eroding backbone.
+    # Two independent backward passes to avoid gradient budget interference.
     log_total_rates = torch.tensor(
         [np.log(max(t.total_rate, 1e-20)) for t in batch],
         dtype=torch.float32, device=device,
@@ -446,18 +450,16 @@ def train_step(model: KMCGraphMuZeroModel, optimizer: torch.optim.Optimizer,
     log_time_pred = model.predict_log_time_delta(latent.detach(), log_total_rate=log_total_rates)
     log_time_target = torch.log(expected_delta_ts.clamp(min=1e-10))
     time_loss = F.mse_loss(log_time_pred, log_time_target)
-    loss = policy_loss + reward_loss + 0.25 * value_loss + 1.0 * time_loss - entropy_coeff * entropy
 
+    # First backward: main loss (policy, reward, value)
     optimizer.zero_grad()
-    # Two-pass backward: backbone and time_head are decoupled (latent.detach())
-    # so we backward them separately to avoid time_head's large gradients
-    # inflating the total norm and starving backbone gradients during clipping.
-    backbone_loss = policy_loss + reward_loss + 0.25 * value_loss - entropy_coeff * entropy
-    backbone_loss.backward()
+    main_loss.backward()
+    # Second backward: time loss (isolated, only updates time_head parameters)
+    (time_loss_weight * time_loss).backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    # time_loss only touches time_head (latent detached), separate graph
-    time_loss.backward()
     optimizer.step()
+
+    loss = main_loss + time_loss_weight * time_loss  # for logging only
 
     return {
         "loss": loss.item(),
@@ -644,7 +646,8 @@ def main():
                                     temperature=args.temperature,
                                     use_entropy_reg=args.use_entropy_reg,
                                     use_physics_discount=args.use_physics_discount,
-                                    time_scale_tau=args.time_scale_tau)
+                                    time_scale_tau=args.time_scale_tau,
+                                    time_loss_weight=0.1)
                 train_losses.append(losses)
 
         collect_time = time.time() - t0
@@ -656,8 +659,8 @@ def main():
         log_msg = (
             f"[Iter {iteration:4d}/{args.total_iterations}] "
             f"collect_reward={np.mean(collect_rewards):+.4f} "
-            f"loss={avg_loss:.4f} (pol={avg_policy_loss:.4f} rew={avg_reward_loss:.4f} time={avg_time_loss:.4f}) "
-            f"eps={epsilon:.3f} buf={len(buffer)} time={collect_time:.1f}s"
+            f"loss={avg_loss:.4f} (pol={avg_policy_loss:.4f} rew={avg_reward_loss:.4f} t_loss={avg_time_loss:.4f}) "
+            f"eps={epsilon:.3f} buf={len(buffer)} wall={collect_time:.1f}s"
         )
         print(log_msg)
 

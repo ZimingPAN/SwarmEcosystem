@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--print_samples", type=int, default=5)
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--save_all_samples", action="store_true",
+                        help="Save all per-sample predictions (not just preview) to output JSON")
     return parser.parse_args()
 
 
@@ -207,6 +209,8 @@ def main() -> None:
         },
         "sample_preview": sample_rows[: max(args.print_samples, 0)],
     }
+    if args.save_all_samples:
+        summary["all_samples"] = sample_rows
 
     print("=" * 60)
     print("Macro-Edit Dreamer vs Traditional KMC Teacher")

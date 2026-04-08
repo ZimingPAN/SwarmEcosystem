@@ -1,0 +1,139 @@
+{
+  "checkpoint": "results/dreamer_macro_edit_v22_extreme/best_model.pt",
+  "cache": "results/dreamer_macro_edit_v15/segments.pt",
+  "split": "val",
+  "num_samples": 400,
+  "segment_k": 4,
+  "cache_signature": {
+    "dataset_version": 7,
+    "seed": 0,
+    "lattice_size": [
+      40,
+      40,
+      40
+    ],
+    "cu_density": 0.0134,
+    "v_density": 0.0002,
+    "segment_k": 4,
+    "max_seed_vacancies": 8,
+    "max_candidate_sites": 128,
+    "max_episode_steps": 200,
+    "max_vacancies": 32,
+    "max_defects": 64,
+    "max_shells": 16,
+    "neighbor_order": "2NN",
+    "reward_scale": 10.0,
+    "temperature": 300.0,
+    "stats_dim": 10,
+    "train_segments": 2000,
+    "val_segments": 400,
+    "teacher_path_summary_mode": "stepwise"
+  },
+  "dataset_stats": {
+    "attempts": 3396,
+    "skipped_uncovered": 2971,
+    "skipped_terminal": 4,
+    "skipped_noop": 21,
+    "candidate_size_sum": 51200.0,
+    "coverage": 0.11778563015312132,
+    "avg_candidate_size": 128.0
+  },
+  "teacher_source": "traditional_kmc_segment_cache",
+  "reward_sum": {
+    "mae": 1.060542733851471,
+    "rmse": 1.4258996665409578,
+    "corr": 0.37583437151936994
+  },
+  "delta_e": {
+    "mae": 0.10605427338514711,
+    "rmse": 0.1425899666540958,
+    "corr": 0.37583437151937027
+  },
+  "tau_expected": {
+    "mae": 0.006399134521966186,
+    "rmse": 0.014270850667766411,
+    "corr": 0.972669236803973,
+    "log_mae": 0.35010791490555776,
+    "log_rmse": 0.7581912975794705,
+    "log_corr": 0.9602552779618914,
+    "scale_ratio": 0.9901605782071315,
+    "traditional_mean": 0.03892737364731662,
+    "predicted_mean": 0.036031295078391846
+  },
+  "tau_realized": {
+    "mae": 0.01807769337944292,
+    "rmse": 0.04153306692248725,
+    "corr": 0.8287542616732554,
+    "log_mae": 0.6392227705267587,
+    "log_rmse": 0.9200129939567276,
+    "log_corr": 0.9408373336506026,
+    "scale_ratio": 1.44696199597555,
+    "traditional_mean": 0.039887370314958266,
+    "predicted_mean": 0.036031295078391846
+  },
+  "traditional_energy": {
+    "reward_sum_mean": 0.8263399750023381,
+    "delta_e_mean": 0.08263399750023381
+  },
+  "predicted_energy": {
+    "reward_sum_mean": 0.616588339060545,
+    "delta_e_mean": 0.06165883390605449
+  },
+  "sample_preview": [
+    {
+      "index": 0,
+      "segment_k": 4,
+      "traditional_kmc_reward_sum": 3.199980000499636,
+      "traditional_kmc_delta_e": 0.3199980000499636,
+      "traditional_kmc_expected_tau": 0.0006111061498660086,
+      "traditional_kmc_realized_tau": 0.00020750614762695904,
+      "predicted_reward_sum": 1.0059106349945068,
+      "predicted_delta_e": 0.10059106349945068,
+      "predicted_tau": 0.0006410692003555596
+    },
+    {
+      "index": 1,
+      "segment_k": 4,
+      "traditional_kmc_reward_sum": 0.0,
+      "traditional_kmc_delta_e": 0.0,
+      "traditional_kmc_expected_tau": 0.03501307716251574,
+      "traditional_kmc_realized_tau": 0.056343222416388006,
+      "predicted_reward_sum": 0.6378951668739319,
+      "predicted_delta_e": 0.06378951668739319,
+      "predicted_tau": 0.004521138034760952
+    },
+    {
+      "index": 2,
+      "segment_k": 4,
+      "traditional_kmc_reward_sum": 3.1999799993354827,
+      "traditional_kmc_delta_e": 0.31999799993354827,
+      "traditional_kmc_expected_tau": 0.0009037773298438346,
+      "traditional_kmc_realized_tau": 0.00046821377391339657,
+      "predicted_reward_sum": 0.7889372706413269,
+      "predicted_delta_e": 0.07889372855424881,
+      "predicted_tau": 0.0008434209157712758
+    },
+    {
+      "index": 3,
+      "segment_k": 4,
+      "traditional_kmc_reward_sum": 0.0,
+      "traditional_kmc_delta_e": 0.0,
+      "traditional_kmc_expected_tau": 0.0002364303209784116,
+      "traditional_kmc_realized_tau": 0.00010707489285247072,
+      "predicted_reward_sum": 1.067487359046936,
+      "predicted_delta_e": 0.10674873739480972,
+      "predicted_tau": 0.00027588981902226806
+    },
+    {
+      "index": 4,
+      "segment_k": 4,
+      "traditional_kmc_reward_sum": 0.0,
+      "traditional_kmc_delta_e": 0.0,
+      "traditional_kmc_expected_tau": 0.0004222556801747222,
+      "traditional_kmc_realized_tau": 0.00015488146970629819,
+      "predicted_reward_sum": 0.8650896549224854,
+      "predicted_delta_e": 0.08650896698236465,
+      "predicted_tau": 0.0004484429082367569
+    }
+  ]
+}
