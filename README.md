@@ -1,8 +1,8 @@
 # AtomWorld-Twins
 
-AtomWorld-Twins is a paper-facing repository for a teacher-student Dreamer macro world model for atomic KMC. The core claim is simple: KMC is a continuous-time Markov chain, and if we want to keep only sparse key states while preserving physical time, the problem should be reformulated as a Semi-Markov world-modeling problem.
+AtomWorld-Twins is a paper-facing repository for a teacher-student Dreamer macro world model for atomic KMC. The core claim is simple: the bottleneck of traditional atomistic simulation is not only speed, but also its dependence on micro-event resolution. If we want to reach sparse key states that govern long-term materials evolution while preserving physical time, the problem should be reformulated as a time-aware macro world-modeling problem.
 
-AtomWorld-Twins 面向一篇聚焦 teacher-student Dreamer macro world model 的论文。核心主张很明确：KMC 本质上是连续时间马尔可夫链；如果希望只保留少量关键状态点同时保持时间准确，就应该把问题重新表述为一个 Semi-Markov world model 问题。
+AtomWorld-Twins 面向一篇聚焦 teacher-student Dreamer macro world model 的论文。核心主张很明确：传统原子模拟的瓶颈不只是速度，还在于它长期被困在逐微观事件推进的分辨率里；如果希望在保持时间准确的同时到达决定材料长期演化的稀疏关键状态，就应该把问题重新表述为一个带时间语义的宏步 world model 问题。
 
 
 
@@ -15,7 +15,7 @@ Traditional KMC provides exact micro-event sampling because transition selection
 - event selection depends on local rates
 - residence time depends on the total rate
 
-This makes KMC a continuous-time Markov chain rather than an ordinary fixed-step simulator. The difficulty is that long-horizon atomistic rollouts are expensive. If we want to observe only sparse key states but still keep the time axis correct, we can no longer stay in the original event-by-event CTMC view. The natural reformulation is a Semi-Markov process: state jump plus explicit duration.
+This makes KMC a continuous-time Markov chain rather than an ordinary fixed-step simulator. The difficulty is not only that long-horizon atomistic rollouts are expensive, but also that most of the budget is consumed at micro-event resolution before the simulation reaches the sparse key states that govern long-term materials evolution. If we want to observe only those important states while still keeping the time axis correct, we can no longer stay in the original event-by-event CTMC view. The natural reformulation is a macro world model with explicit state jump and duration semantics.
 
 ### Why A World Model Is Needed
 
@@ -102,7 +102,7 @@ python eval_macro_time_alignment.py \
 
 传统 KMC 之所以精确，是因为事件选择和时间推进都由同一套物理速率控制：发生什么事件取决于局部速率，停留多久取决于总速率。因此 KMC 本质上是一个连续时间马尔可夫链，而不是普通的固定步长模拟器。
 
-真正的难点在于，原子级长时程 rollout 成本很高。如果我们希望只保留少量关键状态点，同时又不丢掉时间尺度的准确性，就不能继续停留在逐微事件的 CTMC 叙事里。更自然的重写方式是 Semi-Markov：状态跳跃加上显式持续时间。
+真正的难点不只是原子级长时程 rollout 成本很高，更在于模拟预算会被大量逐微事件推进所吞掉，导致系统很难在现实预算内真正到达决定长期材料演化的关键状态。如果我们希望只保留这些重要状态点，同时又不丢掉时间尺度的准确性，就不能继续停留在逐微事件的 CTMC 叙事里。更自然的重写方式是一个显式建模状态跳跃和持续时间的宏步 world model。
 
 ### 为什么必须引入 World Model
 
